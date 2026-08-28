@@ -37,8 +37,8 @@ ForgeFlow is a production-grade distributed execution platform built for asynchr
                   │                               │
                   ▼                               ▼
           ┌───────────────┐                ┌──────────────┐
-          │   Next.js     │                │ ForgeFlow API│
-          │   Dashboard   │                │    Go / Gin  │
+          │  Minimalist   │                │ ForgeFlow API│
+          │ Dashboard (/ui│◄───────────────┤    Go / Gin  │
           └───────────────┘                └───────┬──────┘
                                                    │
                               ┌────────────────────┼─────────────────┐
@@ -124,24 +124,26 @@ make test-race
 # Build local binaries
 make build
 
-# Start full infrastructure stack via Docker Compose
-make docker-up
+# Start full platform stack via Docker Compose
+docker compose up --build -d
+
+# Open the Web Dashboard Console
+# URL: http://localhost:8080/ui (or http://localhost:8080/)
 ```
 
-### Health Check
+### Endpoints & Observability
 
-```bash
-curl -i http://localhost:8080/api/v1/health
-curl -i http://localhost:8080/api/v1/ready
-```
+* **Web Console**: [`http://localhost:8080/ui`](http://localhost:8080/ui) (Minimalist Dark Telemetry & Interactive Job Dispatcher)
+* **Live SSE Stream**: `http://localhost:8080/api/v1/events/stream`
+* **Prometheus Metrics**: `http://localhost:8080/api/v1/metrics`
+* **Health & Readiness**: `http://localhost:8080/api/v1/health` | `http://localhost:8080/api/v1/ready`
 
 ---
 
-## 6. Architecture Decision Records (ADRs)
+## 6. Architecture & Failure Specifications
 
-* [ADR-001: PostgreSQL as Authoritative Source of Truth](docs/adr/ADR-001_postgresql_source_of_truth.md)
-* [ADR-002: At-Least-Once Delivery and Idempotent Execution](docs/adr/ADR-002_at_least_once_delivery.md)
-* [ADR-003: Lease-Based Worker Ownership and Crash Recovery](docs/adr/ADR-003_lease_based_crash_recovery.md)
+* [Failure Modes, Guarantees & Recovery Matrix](docs/FAILURE_MODES.md)
+* [Production Audit & Distributed Invariant Plan](docs/PRODUCTION_AUDIT_PLAN.md)
 
 ---
 
