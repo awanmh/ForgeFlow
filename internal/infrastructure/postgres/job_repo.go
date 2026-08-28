@@ -511,8 +511,18 @@ func (r *JobRepo) RecoverExpiredLeases(ctx context.Context, limit int, retryDela
 	return recoveredJobs, nil
 }
 
+// JobAttemptRepo implements ports.JobAttemptRepository via PostgreSQL.
+type JobAttemptRepo struct {
+	client *Client
+}
+
+// NewJobAttemptRepo constructs a new JobAttemptRepo instance.
+func NewJobAttemptRepo(client *Client) *JobAttemptRepo {
+	return &JobAttemptRepo{client: client}
+}
+
 // Create records a new attempt in job_attempts table.
-func (r *JobRepo) CreateAttempt(ctx context.Context, attempt *job.JobAttempt) error {
+func (r *JobAttemptRepo) Create(ctx context.Context, attempt *job.JobAttempt) error {
 	query := `
 		INSERT INTO job_attempts (
 			id, job_id, attempt_number, worker_id,
@@ -536,7 +546,7 @@ func (r *JobRepo) CreateAttempt(ctx context.Context, attempt *job.JobAttempt) er
 }
 
 // Update updates an attempt status and completion fields.
-func (r *JobRepo) UpdateAttempt(ctx context.Context, attempt *job.JobAttempt) error {
+func (r *JobAttemptRepo) Update(ctx context.Context, attempt *job.JobAttempt) error {
 	query := `
 		UPDATE job_attempts
 		SET
@@ -558,7 +568,7 @@ func (r *JobRepo) UpdateAttempt(ctx context.Context, attempt *job.JobAttempt) er
 }
 
 // ListByJobID returns all historical attempts for a job.
-func (r *JobRepo) ListByJobID(ctx context.Context, jobID uuid.UUID) ([]*job.JobAttempt, error) {
+func (r *JobAttemptRepo) ListByJobID(ctx context.Context, jobID uuid.UUID) ([]*job.JobAttempt, error) {
 	query := `
 		SELECT
 			id, job_id, attempt_number, worker_id, status,
