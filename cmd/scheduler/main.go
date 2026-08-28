@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
+	"github.com/forgeflow/forgeflow/internal/application/scheduler"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/config"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/logging"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/postgres"
@@ -44,12 +46,37 @@ func main() {
 		logger.Warn("redis connection failed during startup (will retry on demand)", "error", err)
 	}
 
+	jobRepo := postgres.NewJobRepo(pgClient)
+	workerRepo := postgres.NewWorkerRepo(pgClient)
+	outboxRepo := postgres.NewOutboxRepo(pgClient)
+	queueEngine := redis.NewQueueEngine(rdbClient, "forgeflow-workers")
+	locker := redis.NewLocker(rdbClient)
+
+	schedEngine := scheduler.NewEngine(scheduler.Config{
+		LeaderLockKey:     "scheduler-leader",
+		LeaderLockTTL:     cfg.Scheduler.LeaderLockTTL,
+		RecoveryInterval:  cfg.Scheduler.LeaseRecoveryInterval,
+		OutboxInterval:    1 * cfg.Scheduler.PollInterval,
+		HeartbeatTimeout:  3 * cfg.Worker.HeartbeatInterval,
+		BatchLimit:        100,
+		DefaultRetryDelay: cfg.Worker.BackoffInitial,
+	}, jobRepo, workerRepo, outboxRepo, queueEngine, locker, logger)
+
+	schedCtx, cancelSched := context.WithCancel(ctx)
+
+	// Start scheduler in background
+	go func() {
+		if err := schedEngine.Start(schedCtx); err != nil && !errors.Is(err, context.Canceled) {
+			logger.Error("scheduler engine error", "error", err)
+		}
+	}()
+
 	shutdownMgr := shutdown.NewManager(logger, cfg.Worker.LeaseDuration)
 
-	shutdownMgr.Register("PostgreSQL", func(ctx context.Context) error {
-		if pgClient != nil {
-			pgClient.Close()
-		}
+	shutdownMgr.Register("SchedulerEngine", func(ctx context.Context) error {
+		logger.Info("stopping scheduler background coordination loops")
+		cancelSched()
+		schedEngine.Stop()
 		return nil
 	})
 
@@ -60,8 +87,10 @@ func main() {
 		return nil
 	})
 
-	shutdownMgr.Register("SchedulerLoop", func(ctx context.Context) error {
-		logger.Info("stopping scheduler background coordination loops")
+	shutdownMgr.Register("PostgreSQL", func(ctx context.Context) error {
+		if pgClient != nil {
+			pgClient.Close()
+		}
 		return nil
 	})
 
