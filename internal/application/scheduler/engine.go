@@ -182,6 +182,9 @@ func (e *Engine) releaseLeader(ctx context.Context) {
 
 // runLeaseRecovery sweeps for expired worker leases and re-enqueues or fails them.
 func (e *Engine) runLeaseRecovery(ctx context.Context) {
+	if e.jobRepo == nil {
+		return
+	}
 	recovered, err := e.jobRepo.RecoverExpiredLeases(ctx, e.cfg.BatchLimit, e.cfg.DefaultRetryDelay)
 	if err != nil {
 		e.logger.Error("lease recovery sweep failed", "error", err)
@@ -195,6 +198,9 @@ func (e *Engine) runLeaseRecovery(ctx context.Context) {
 
 // runDeadWorkerSweep marks inactive workers as DEAD.
 func (e *Engine) runDeadWorkerSweep(ctx context.Context) {
+	if e.workerRepo == nil {
+		return
+	}
 	deadWorkers, err := e.workerRepo.FindDeadWorkers(ctx, e.cfg.HeartbeatTimeout)
 	if err != nil {
 		e.logger.Error("dead worker sweep failed", "error", err)
@@ -213,6 +219,9 @@ func (e *Engine) runDeadWorkerSweep(ctx context.Context) {
 
 // runOutboxPublisher publishes pending transactional outbox events to Redis Streams.
 func (e *Engine) runOutboxPublisher(ctx context.Context) {
+	if e.outboxRepo == nil {
+		return
+	}
 	events, err := e.outboxRepo.FetchPending(ctx, e.cfg.BatchLimit)
 	if err != nil {
 		e.logger.Error("failed to fetch pending outbox events", "error", err)
