@@ -1,0 +1,148 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: forgeflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: forgeflow
+      POSTGRES_PASSWORD: forgeflow_secret
+      POSTGRES_DB: forgeflow
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forgeflow -d forgeflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - forgeflow-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: forgeflow-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - forgeflow-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    container_name: forgeflow-api
+    restart: unless-stopped
+    environment:
+      ENV: production
+      LOG_LEVEL: info
+      HTTP_PORT: 8080
+      DATABASE_URL: postgres://forgeflow:forgeflow_secret@postgres:5432/forgeflow?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: forgeflow-portfolio-secure-jwt-secret-key-2026
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - forgeflow-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    container_name: forgeflow-worker
+    restart: unless-stopped
+    environment:
+      ENV: production
+      LOG_LEVEL: info
+      WORKER_ID: worker-node-01
+      WORKER_CONCURRENCY: 10
+      DATABASE_URL: postgres://forgeflow:forgeflow_secret@postgres:5432/forgeflow?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - forgeflow-network
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: scheduler
+    container_name: forgeflow-scheduler
+    restart: unless-stopped
+    environment:
+      ENV: production
+      LOG_LEVEL: info
+      DATABASE_URL: postgres://forgeflow:forgeflow_secret@postgres:5432/forgeflow?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - forgeflow-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: forgeflow-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./deployments/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    networks:
+      - forgeflow-network
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: forgeflow-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - forgeflow-network
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: forgeflow-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - forgeflow-network
+
+volumes:
+  postgres-data:
+  redis-data:
+
+networks:
+  forgeflow-network:
+    driver: bridge
