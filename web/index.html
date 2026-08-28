@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ForgeFlow &mdash; Distributed Orchestration Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/ui/style.css">
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">⚡</div>
+      <div class="brand-text">
+        <h1>ForgeFlow</h1>
+        <span>Engine v1.0</span>
+      </div>
+    </div>
+
+    <nav class="nav-menu">
+      <a class="nav-item active" data-tab="overview">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+        Overview
+      </a>
+      <a class="nav-item" data-tab="jobs">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Jobs Console
+      </a>
+      <a class="nav-item" data-tab="workflows">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6M9 6h6M15 9l3 6"/></svg>
+        Workflows (DAG)
+      </a>
+      <a class="nav-item" data-tab="workers">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>
+        Workers
+      </a>
+      <a class="nav-item" data-tab="events">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></svg>
+        Live Event Stream
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="live-indicator">
+        <div class="live-dot" id="streamStatusDot"></div>
+        <span id="streamStatusText">Connected (SSE)</span>
+      </div>
+      <span class="code-pill">Postgres+Redis</span>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <div class="main-wrapper">
+    <header>
+      <div class="header-title">
+        <h2 id="viewTitle">System Overview</h2>
+        <p id="viewSubtitle">Real-time distributed job processing and workflow state telemetry</p>
+      </div>
+
+      <div class="header-actions">
+        <button type="button" class="btn btn-secondary" id="btnQuickDemo">⚡ Quick Task Demo</button>
+        <button type="button" class="btn btn-primary" id="btnNewJob">+ Submit Job</button>
+      </div>
+    </header>
+
+    <main class="content-body">
+      <!-- Live Metrics Overview -->
+      <section class="stats-grid">
+        <div class="stat-card cyan">
+          <div class="stat-label">Total Jobs</div>
+          <div class="stat-value" id="statTotalJobs">0</div>
+          <div class="stat-subtext">Authoritative Postgres Records</div>
+        </div>
+
+        <div class="stat-card amber">
+          <div class="stat-label">Running / Leased</div>
+          <div class="stat-value" id="statRunningJobs">0</div>
+          <div class="stat-subtext">Active Worker Leases</div>
+        </div>
+
+        <div class="stat-card emerald">
+          <div class="stat-label">Success Rate</div>
+          <div class="stat-value" id="statSuccessRate">100%</div>
+          <div class="stat-subtext">Exponential Backoff Protected</div>
+        </div>
+
+        <div class="stat-card violet">
+          <div class="stat-label">Active Workers</div>
+          <div class="stat-value" id="statActiveWorkers">3</div>
+          <div class="stat-subtext">Bounded Concurrency Pool</div>
+        </div>
+      </section>
+
+      <!-- Main Jobs Panel -->
+      <section class="panel-card">
+        <div class="panel-header">
+          <h3>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
+            Recent Asynchronous Jobs
+          </h3>
+          <div class="header-actions">
+            <button type="button" class="btn btn-secondary" id="btnRefreshJobs">⟳ Refresh</button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Job ID</th>
+                <th scope="col">Task Type</th>
+                <th scope="col">Priority</th>
+                <th scope="col">Status</th>
+                <th scope="col">Attempts</th>
+                <th scope="col">Created At</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="jobsTableBody">
+              <tr>
+                <td colspan="7">
+                  Fetching active jobs from ForgeFlow engine...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Live Stream Events Ticker -->
+      <section class="panel-card">
+        <div class="panel-header">
+          <h3>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Real-Time Engine Stream (SSE)
+          </h3>
+          <span class="code-pill">topic: forgeflow:events</span>
+        </div>
+        <div class="event-ticker" id="eventTicker">
+          <div class="event-row">
+            <span class="event-time">12:00:00</span>
+            <span class="event-tag">[SYSTEM]</span>
+            <span>Connected to ForgeFlow telemetry SSE pipeline</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Submit Job Modal -->
+  <div class="modal-overlay" id="jobModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Submit Asynchronous Task</h3>
+        <button type="button" id="btnCloseModal" class="btn-close">&times;</button>
+      </div>
+      <form id="jobForm">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="taskType">Task Type</label>
+            <select class="form-control" id="taskType">
+              <option value="custom-demo">custom-demo (Versatile Testing Handler)</option>
+              <option value="notification">notification (Webhook Delivery)</option>
+              <option value="http-request">http-request (Outbound HTTP)</option>
+              <option value="database-backup">database-backup (Simulated S3 Backup)</option>
+              <option value="docker-build">docker-build (Container Build)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="jobPriority">Priority (Higher = Claimed First)</label>
+            <input type="number" class="form-control" id="jobPriority" value="10" min="0" max="100">
+          </div>
+
+          <div class="form-group">
+            <label for="jobMaxAttempts">Max Retry Attempts</label>
+            <input type="number" class="form-control" id="jobMaxAttempts" value="3" min="1" max="10">
+          </div>
+
+          <div class="form-group">
+            <label for="jobIdempotencyKey">Idempotency Key (Optional)</label>
+            <input type="text" class="form-control" id="jobIdempotencyKey" placeholder="e.g. order-payment-94285">
+          </div>
+
+          <div class="form-group">
+            <label for="jobPayload">Task JSON Payload</label>
+            <textarea class="form-control" id="jobPayload">{"action": "success", "sleep_millis": 200}</textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btnCancelModal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Submit to Queue</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>

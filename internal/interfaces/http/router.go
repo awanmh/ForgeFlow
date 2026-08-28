@@ -81,6 +81,12 @@ func NewRouter(pgClient *postgres.Client, rdb *redis.Client, logger *slog.Logger
 		engine.Use(server.rateLimiter.Middleware())
 	}
 
+	// Static Dashboard Assets
+	engine.Static("/ui", "./web")
+	engine.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "/ui")
+	})
+
 	// Core API v1 routes
 	v1 := engine.Group("/api/v1")
 	{
