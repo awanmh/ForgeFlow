@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         GO111MODULE = 'on'
-        CGO_ENABLED = '0'
+        CGO_ENABLED = '1'
         ENV = 'test'
         LOG_LEVEL = 'info'
     }
