@@ -27,6 +27,9 @@ func (h *SSEHandler) HandleStream(c *gin.Context) {
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 
+	rc := http.NewResponseController(c.Writer)
+	_ = rc.SetWriteDeadline(time.Time{})
+
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Streaming unsupported"})

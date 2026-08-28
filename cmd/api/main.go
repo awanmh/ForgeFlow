@@ -86,7 +86,7 @@ func main() {
 		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
 		Handler:      router.Engine,
 		ReadTimeout:  cfg.Server.ReadTimeout,
-		WriteTimeout: cfg.Server.WriteTimeout,
+		WriteTimeout: 0, // Disabled to support persistent Server-Sent Events (SSE) streaming
 		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 
