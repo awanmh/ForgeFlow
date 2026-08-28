@@ -52,16 +52,19 @@ const (
 
 // Workflow represents a Directed Acyclic Graph (DAG) of asynchronous tasks.
 type Workflow struct {
-	ID          uuid.UUID  `json:"id"`
-	UserID      uuid.UUID  `json:"user_id"`
-	Name        string     `json:"name"`
-	Description *string    `json:"description,omitempty"`
-	Status      Status     `json:"status"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	StartedAt   *time.Time `json:"started_at,omitempty"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	CancelledAt *time.Time `json:"cancelled_at,omitempty"`
+	ID             uuid.UUID  `json:"id"`
+	UserID         uuid.UUID  `json:"user_id"`
+	Name           string     `json:"name"`
+	Description    *string    `json:"description,omitempty"`
+	Status         Status     `json:"status"`
+	TotalNodes     int        `json:"total_nodes"`
+	CompletedNodes int        `json:"completed_nodes"`
+	FailedNodes    int        `json:"failed_nodes"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+	CancelledAt    *time.Time `json:"cancelled_at,omitempty"`
 }
 
 // Node represents a vertex in the workflow DAG corresponding to an executable task.

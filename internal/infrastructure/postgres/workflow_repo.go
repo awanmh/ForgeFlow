@@ -25,11 +25,15 @@ func NewWorkflowRepo(client *Client) *WorkflowRepo {
 func (r *WorkflowRepo) Create(ctx context.Context, wf *workflow.Workflow, nodes []*workflow.Node, edges []*workflow.Edge) error {
 	return r.client.WithinTransaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		wfQuery := `
-			INSERT INTO workflows (id, user_id, name, description, status, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			INSERT INTO workflows (
+				id, user_id, name, status, total_nodes, completed_nodes, failed_nodes, created_at, metadata
+			) VALUES (
+				$1, $2, $3, $4, $5, $6, $7, $8, $9
+			)
 		`
+		metadata := []byte("{}")
 		_, err := tx.Exec(ctx, wfQuery,
-			wf.ID, wf.UserID, wf.Name, wf.Description, string(wf.Status), wf.CreatedAt, wf.UpdatedAt,
+			wf.ID, wf.UserID, wf.Name, string(wf.Status), len(nodes), 0, 0, wf.CreatedAt, metadata,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to insert workflow: %w", err)
@@ -37,17 +41,17 @@ func (r *WorkflowRepo) Create(ctx context.Context, wf *workflow.Workflow, nodes 
 
 		nodeQuery := `
 			INSERT INTO workflow_nodes (
-				id, workflow_id, name, task_type, payload, priority, max_attempts,
-				timeout_seconds, status, job_id, created_at, updated_at
+				id, workflow_id, node_key, task_type, payload, priority, max_attempts,
+				timeout_seconds, status, created_at
 			) VALUES (
 				$1, $2, $3, $4, $5, $6, $7,
-				$8, $9, $10, $11, $12
+				$8, $9, $10
 			)
 		`
 		for _, n := range nodes {
 			_, err = tx.Exec(ctx, nodeQuery,
 				n.ID, n.WorkflowID, n.Name, n.TaskType, n.Payload, n.Priority, n.MaxAttempts,
-				n.TimeoutSeconds, string(n.Status), n.JobID, n.CreatedAt, n.UpdatedAt,
+				n.TimeoutSeconds, string(n.Status), n.CreatedAt,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to insert workflow node %s: %w", n.Name, err)
@@ -55,12 +59,13 @@ func (r *WorkflowRepo) Create(ctx context.Context, wf *workflow.Workflow, nodes 
 		}
 
 		edgeQuery := `
-			INSERT INTO workflow_edges (id, workflow_id, from_node_id, to_node_id, condition)
-			VALUES ($1, $2, $3, $4, $5)
+			INSERT INTO workflow_edges (workflow_id, upstream_node_id, downstream_node_id)
+			VALUES ($1, $2, $3)
+			ON CONFLICT DO NOTHING
 		`
 		for _, e := range edges {
 			_, err = tx.Exec(ctx, edgeQuery,
-				e.ID, e.WorkflowID, e.FromNodeID, e.ToNodeID, string(e.Condition),
+				e.WorkflowID, e.FromNodeID, e.ToNodeID,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to insert workflow edge: %w", err)
@@ -73,15 +78,15 @@ func (r *WorkflowRepo) Create(ctx context.Context, wf *workflow.Workflow, nodes 
 
 func (r *WorkflowRepo) GetByID(ctx context.Context, id uuid.UUID) (*workflow.Workflow, []*workflow.Node, []*workflow.Edge, error) {
 	wfQuery := `
-		SELECT id, user_id, name, description, status, created_at, updated_at, started_at, completed_at, cancelled_at
+		SELECT id, user_id, name, status, total_nodes, completed_nodes, failed_nodes, created_at, started_at, completed_at, cancelled_at
 		FROM workflows
 		WHERE id = $1
 	`
 	wf := &workflow.Workflow{}
 	var statusStr string
 	err := r.client.Pool.QueryRow(ctx, wfQuery, id).Scan(
-		&wf.ID, &wf.UserID, &wf.Name, &wf.Description, &statusStr,
-		&wf.CreatedAt, &wf.UpdatedAt, &wf.StartedAt, &wf.CompletedAt, &wf.CancelledAt,
+		&wf.ID, &wf.UserID, &wf.Name, &statusStr, &wf.TotalNodes, &wf.CompletedNodes, &wf.FailedNodes,
+		&wf.CreatedAt, &wf.StartedAt, &wf.CompletedAt, &wf.CancelledAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -93,7 +98,7 @@ func (r *WorkflowRepo) GetByID(ctx context.Context, id uuid.UUID) (*workflow.Wor
 
 	// Fetch nodes
 	nodeQuery := `
-		SELECT id, workflow_id, name, task_type, payload, priority, max_attempts, timeout_seconds, status, job_id, created_at, updated_at
+		SELECT id, workflow_id, node_key, task_type, payload, priority, max_attempts, timeout_seconds, status, created_at
 		FROM workflow_nodes
 		WHERE workflow_id = $1
 		ORDER BY created_at ASC
@@ -110,7 +115,7 @@ func (r *WorkflowRepo) GetByID(ctx context.Context, id uuid.UUID) (*workflow.Wor
 		var nStatus string
 		if err := nodeRows.Scan(
 			&n.ID, &n.WorkflowID, &n.Name, &n.TaskType, &n.Payload, &n.Priority, &n.MaxAttempts,
-			&n.TimeoutSeconds, &nStatus, &n.JobID, &n.CreatedAt, &n.UpdatedAt,
+			&n.TimeoutSeconds, &nStatus, &n.CreatedAt,
 		); err != nil {
 			return nil, nil, nil, err
 		}
@@ -121,7 +126,7 @@ func (r *WorkflowRepo) GetByID(ctx context.Context, id uuid.UUID) (*workflow.Wor
 
 	// Fetch edges
 	edgeQuery := `
-		SELECT id, workflow_id, from_node_id, to_node_id, condition
+		SELECT workflow_id, upstream_node_id, downstream_node_id
 		FROM workflow_edges
 		WHERE workflow_id = $1
 	`
@@ -133,12 +138,13 @@ func (r *WorkflowRepo) GetByID(ctx context.Context, id uuid.UUID) (*workflow.Wor
 
 	var edges []*workflow.Edge
 	for edgeRows.Next() {
-		e := &workflow.Edge{}
-		var condStr string
-		if err := edgeRows.Scan(&e.ID, &e.WorkflowID, &e.FromNodeID, &e.ToNodeID, &condStr); err != nil {
+		e := &workflow.Edge{
+			ID:        uuid.New(),
+			Condition: workflow.ConditionAllSuccess,
+		}
+		if err := edgeRows.Scan(&e.WorkflowID, &e.FromNodeID, &e.ToNodeID); err != nil {
 			return nil, nil, nil, err
 		}
-		e.Condition = workflow.EdgeCondition(condStr)
 		edges = append(edges, e)
 	}
 
@@ -182,7 +188,7 @@ func (r *WorkflowRepo) List(ctx context.Context, filter ports.WorkflowFilter) ([
 	}
 
 	listQuery := fmt.Sprintf(`
-		SELECT id, user_id, name, description, status, created_at, updated_at, started_at, completed_at, cancelled_at
+		SELECT id, user_id, name, status, total_nodes, completed_nodes, failed_nodes, created_at, started_at, completed_at, cancelled_at
 		FROM workflows
 		%s
 		ORDER BY created_at DESC
@@ -201,8 +207,8 @@ func (r *WorkflowRepo) List(ctx context.Context, filter ports.WorkflowFilter) ([
 		wf := &workflow.Workflow{}
 		var statusStr string
 		if err := rows.Scan(
-			&wf.ID, &wf.UserID, &wf.Name, &wf.Description, &statusStr,
-			&wf.CreatedAt, &wf.UpdatedAt, &wf.StartedAt, &wf.CompletedAt, &wf.CancelledAt,
+			&wf.ID, &wf.UserID, &wf.Name, &statusStr, &wf.TotalNodes, &wf.CompletedNodes, &wf.FailedNodes,
+			&wf.CreatedAt, &wf.StartedAt, &wf.CompletedAt, &wf.CancelledAt,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -230,11 +236,10 @@ func (r *WorkflowRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status wo
 		SET status = $1,
 		    started_at = COALESCE($2, started_at),
 		    completed_at = COALESCE($3, completed_at),
-		    cancelled_at = COALESCE($4, cancelled_at),
-		    updated_at = $5
-		WHERE id = $6
+		    cancelled_at = COALESCE($4, cancelled_at)
+		WHERE id = $5
 	`
-	_, err := r.client.Pool.Exec(ctx, query, string(status), startedAt, completedAt, cancelledAt, now, id)
+	_, err := r.client.Pool.Exec(ctx, query, string(status), startedAt, completedAt, cancelledAt, id)
 	if err != nil {
 		return fmt.Errorf("failed to update workflow status: %w", err)
 	}
@@ -245,10 +250,11 @@ func (r *WorkflowRepo) UpdateNodeStatus(ctx context.Context, nodeID uuid.UUID, s
 	now := time.Now().UTC()
 	query := `
 		UPDATE workflow_nodes
-		SET status = $1, job_id = COALESCE($2, job_id), updated_at = $3
+		SET status = $1,
+		    completed_at = CASE WHEN $2 = 'SUCCEEDED' THEN $3 ELSE completed_at END
 		WHERE id = $4
 	`
-	_, err := r.client.Pool.Exec(ctx, query, string(status), jobID, now, nodeID)
+	_, err := r.client.Pool.Exec(ctx, query, string(status), string(status), now, nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to update workflow node status: %w", err)
 	}

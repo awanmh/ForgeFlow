@@ -20,23 +20,23 @@
     </div>
 
     <nav class="nav-group">
-      <a class="nav-item active" data-tab="overview">
+      <a class="nav-item active" data-tab="overview" id="navOverview">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
         Overview
       </a>
-      <a class="nav-item" data-tab="jobs">
+      <a class="nav-item" data-tab="jobs" id="navJobs">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
         Jobs
       </a>
-      <a class="nav-item" data-tab="workflows">
+      <a class="nav-item" data-tab="workflows" id="navWorkflows">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6M9 6h6M15 9l3 6"/></svg>
         Workflows
       </a>
-      <a class="nav-item" data-tab="workers">
+      <a class="nav-item" data-tab="workers" id="navWorkers">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>
         Workers
       </a>
-      <a class="nav-item" data-tab="events">
+      <a class="nav-item" data-tab="events" id="navEvents">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></svg>
         Events
       </a>
@@ -66,86 +66,236 @@
     </header>
 
     <main class="content-body">
-      <!-- Live Metrics Overview -->
-      <section class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Total Jobs</div>
-          <div class="stat-value" id="statTotalJobs">0</div>
-          <div class="stat-subtext">PostgreSQL Authoritative Records</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-label">Active Leases</div>
-          <div class="stat-value" id="statRunningJobs">0</div>
-          <div class="stat-subtext">Heartbeat Protected Workers</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-label">Success Rate</div>
-          <div class="stat-value" id="statSuccessRate">100%</div>
-          <div class="stat-subtext">Exponential Backoff &amp; Jitter</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-label">Worker Nodes</div>
-          <div class="stat-value" id="statActiveWorkers">3</div>
-          <div class="stat-subtext">Bounded Concurrency Pool</div>
-        </div>
-      </section>
-
-      <!-- Main Jobs Panel -->
-      <section class="panel-card">
-        <div class="panel-header">
-          <h3>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
-            Recent Asynchronous Jobs
-          </h3>
-          <div class="header-actions">
-            <button type="button" class="btn btn-secondary" id="btnRefreshJobs">Refresh</button>
+      <!-- 1. OVERVIEW VIEW -->
+      <div id="viewOverviewSection" class="view-section active">
+        <!-- Live Metrics Overview -->
+        <section class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Jobs</div>
+            <div class="stat-value" id="statTotalJobs">0</div>
+            <div class="stat-subtext">PostgreSQL Authoritative Records</div>
           </div>
-        </div>
 
-        <div class="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Job ID</th>
-                <th scope="col">Task Type</th>
-                <th scope="col">Priority</th>
-                <th scope="col">Status</th>
-                <th scope="col">Attempts</th>
-                <th scope="col">Created At</th>
-                <th scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="jobsTableBody">
-              <tr>
-                <td colspan="7">
-                  Fetching active jobs from ForgeFlow engine...
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- Live Stream Events Ticker -->
-      <section class="panel-card">
-        <div class="panel-header">
-          <h3>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            Live Engine Events
-          </h3>
-          <span class="code-pill">topic: forgeflow:events</span>
-        </div>
-        <div class="event-ticker" id="eventTicker">
-          <div class="event-row">
-            <span class="event-time">00:00:00</span>
-            <span class="event-tag">SYSTEM</span>
-            <span>Connected to ForgeFlow telemetry stream</span>
+          <div class="stat-card">
+            <div class="stat-label">Active Leases</div>
+            <div class="stat-value" id="statRunningJobs">0</div>
+            <div class="stat-subtext">Heartbeat Protected Workers</div>
           </div>
-        </div>
-      </section>
+
+          <div class="stat-card">
+            <div class="stat-label">Success Rate</div>
+            <div class="stat-value" id="statSuccessRate">100%</div>
+            <div class="stat-subtext">Exponential Backoff &amp; Jitter</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">Worker Nodes</div>
+            <div class="stat-value" id="statActiveWorkers">1</div>
+            <div class="stat-subtext">Bounded Concurrency Pool</div>
+          </div>
+        </section>
+
+        <!-- Main Jobs Panel -->
+        <section class="panel-card">
+          <div class="panel-header">
+            <h3>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
+              Recent Asynchronous Jobs
+            </h3>
+            <div class="header-actions">
+              <button type="button" class="btn btn-secondary" id="btnRefreshOverviewJobs">Refresh</button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Job ID</th>
+                  <th scope="col">Task Type</th>
+                  <th scope="col">Priority</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Attempts</th>
+                  <th scope="col">Created At</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="overviewJobsTableBody">
+                <tr>
+                  <td colspan="7" class="empty-cell">
+                    Fetching active jobs from ForgeFlow engine...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Live Stream Events Ticker -->
+        <section class="panel-card">
+          <div class="panel-header">
+            <h3>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              Live Engine Events
+            </h3>
+            <span class="code-pill">topic: forgeflow:events</span>
+          </div>
+          <div class="event-ticker" id="eventTicker">
+            <div class="event-row">
+              <span class="event-time">00:00:00</span>
+              <span class="event-tag">SYSTEM</span>
+              <span>Connected to ForgeFlow telemetry stream</span>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- 2. JOBS VIEW -->
+      <div id="viewJobsSection" class="view-section">
+        <section class="panel-card">
+          <div class="panel-header">
+            <h3>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              All Jobs Directory
+            </h3>
+            <div class="header-actions">
+              <select id="filterJobStatus" class="form-control form-control-sm">
+                <option value="">All Statuses</option>
+                <option value="PENDING">PENDING</option>
+                <option value="QUEUED">QUEUED</option>
+                <option value="RUNNING">RUNNING</option>
+                <option value="SUCCEEDED">SUCCEEDED</option>
+                <option value="RETRYING">RETRYING</option>
+                <option value="DEAD">DEAD</option>
+                <option value="CANCELLED">CANCELLED</option>
+              </select>
+              <button type="button" class="btn btn-secondary" id="btnRefreshJobsView">Refresh</button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Job ID</th>
+                  <th scope="col">Task Type</th>
+                  <th scope="col">Priority</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Attempts</th>
+                  <th scope="col">Worker ID</th>
+                  <th scope="col">Created At</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="allJobsTableBody">
+                <tr>
+                  <td colspan="8" class="empty-cell">
+                    Loading jobs...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- 3. WORKFLOWS VIEW -->
+      <div id="viewWorkflowsSection" class="view-section">
+        <section class="panel-card">
+          <div class="panel-header">
+            <h3>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6M9 6h6M15 9l3 6"/></svg>
+              Directed Acyclic Graph (DAG) Workflows
+            </h3>
+            <div class="header-actions">
+              <button type="button" class="btn btn-primary" id="btnNewWorkflow">Create Workflow</button>
+              <button type="button" class="btn btn-secondary" id="btnRefreshWorkflows">Refresh</button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Workflow ID</th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Nodes Progress</th>
+                  <th scope="col">Created At</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="workflowsTableBody">
+                <tr>
+                  <td colspan="6" class="empty-cell">
+                    Loading workflows...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- 4. WORKERS VIEW -->
+      <div id="viewWorkersSection" class="view-section">
+        <section class="panel-card">
+          <div class="panel-header">
+            <h3>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>
+              Registered Worker Fleet
+            </h3>
+            <div class="header-actions">
+              <button type="button" class="btn btn-secondary" id="btnRefreshWorkers">Refresh</button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Worker Key</th>
+                  <th scope="col">Worker UUID</th>
+                  <th scope="col">Hostname</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Concurrency</th>
+                  <th scope="col">Last Heartbeat</th>
+                </tr>
+              </thead>
+              <tbody id="workersTableBody">
+                <tr>
+                  <td colspan="6" class="empty-cell">
+                    Loading worker nodes...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- 5. EVENTS VIEW -->
+      <div id="viewEventsSection" class="view-section">
+        <section class="panel-card">
+          <div class="panel-header">
+            <h3>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></svg>
+              Full Real-time Telemetry Stream
+            </h3>
+            <div class="header-actions">
+              <button type="button" class="btn btn-secondary" id="btnClearEvents">Clear Console</button>
+            </div>
+          </div>
+
+          <div class="event-ticker full-events-ticker" id="fullEventsTicker">
+            <div class="event-row">
+              <span class="event-time">00:00:00</span>
+              <span class="event-tag">SYSTEM</span>
+              <span>Event telemetry stream initialized</span>
+            </div>
+          </div>
+        </section>
+      </div>
     </main>
   </div>
 
@@ -193,6 +343,52 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" id="btnCancelModal">Cancel</button>
           <button type="submit" class="btn btn-primary">Submit to Queue</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Create Workflow Modal -->
+  <div class="modal-overlay" id="workflowModal">
+    <div class="modal-card modal-card-lg">
+      <div class="modal-header">
+        <h3>Create DAG Workflow</h3>
+        <button type="button" id="btnCloseWorkflowModal" class="btn-close">&times;</button>
+      </div>
+      <form id="workflowForm">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="wfName">Workflow Name</label>
+            <input type="text" class="form-control" id="wfName" value="diamond-build-deploy-pipeline" required>
+          </div>
+
+          <div class="form-group">
+            <label for="wfDescription">Description</label>
+            <input type="text" class="form-control" id="wfDescription" value="Diamond CI/CD DAG Pipeline (Build -> Test, Security -> Deploy)">
+          </div>
+
+          <div class="form-group">
+            <label for="wfNodesDefinition">DAG Definition (JSON Nodes &amp; Edges)</label>
+            <textarea class="form-control form-control-textarea-lg" id="wfNodesDefinition">{
+  "nodes": [
+    { "name": "BUILD", "task_type": "custom-demo", "payload": {"stage": "build"} },
+    { "name": "TEST", "task_type": "custom-demo", "payload": {"stage": "test"} },
+    { "name": "SECURITY", "task_type": "custom-demo", "payload": {"stage": "security"} },
+    { "name": "DEPLOY", "task_type": "custom-demo", "payload": {"stage": "deploy"} }
+  ],
+  "edges": [
+    { "from_node_name": "BUILD", "to_node_name": "TEST" },
+    { "from_node_name": "BUILD", "to_node_name": "SECURITY" },
+    { "from_node_name": "TEST", "to_node_name": "DEPLOY" },
+    { "from_node_name": "SECURITY", "to_node_name": "DEPLOY" }
+  ]
+}</textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btnCancelWorkflowModal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create &amp; Start DAG</button>
         </div>
       </form>
     </div>

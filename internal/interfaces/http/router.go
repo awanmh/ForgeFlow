@@ -29,6 +29,7 @@ type Server struct {
 	jobHandler      *JobHandler
 	workflowHandler *WorkflowHandler
 	sseHandler      *SSEHandler
+	workerRepo      *postgres.WorkerRepo
 }
 
 // RouterOptions allows injecting domain handlers and security managers into the router.
@@ -47,10 +48,11 @@ func NewRouter(pgClient *postgres.Client, rdb *redis.Client, logger *slog.Logger
 	engine := gin.New()
 
 	server := &Server{
-		Engine:   engine,
-		pgClient: pgClient,
-		rdb:      rdb,
-		logger:   logger,
+		Engine:     engine,
+		pgClient:   pgClient,
+		rdb:        rdb,
+		logger:     logger,
+		workerRepo: postgres.NewWorkerRepo(pgClient),
 	}
 
 	if len(opts) > 0 {
@@ -94,6 +96,7 @@ func NewRouter(pgClient *postgres.Client, rdb *redis.Client, logger *slog.Logger
 		v1.GET("/health", server.handleHealth)
 		v1.GET("/ready", server.handleReady)
 		v1.GET("/metrics", gin.WrapH(promhttp.Handler()))
+		v1.GET("/workers", server.handleListWorkers)
 
 		// Real-time Event Streaming (SSE)
 		if server.sseHandler != nil {
@@ -268,4 +271,17 @@ func (s *Server) handleReady(c *gin.Context) {
 		"ready":     isReady,
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+func (s *Server) handleListWorkers(c *gin.Context) {
+	if s.workerRepo == nil {
+		c.JSON(http.StatusOK, gin.H{"data": []any{}, "total": 0})
+		return
+	}
+	workers, err := s.workerRepo.List(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": workers, "total": len(workers)})
 }

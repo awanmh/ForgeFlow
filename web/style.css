@@ -491,3 +491,47 @@ textarea.form-control {
   font-weight: 600;
   color: var(--text-main);
 }
+
+/* Tab Views */
+.view-section {
+  display: none;
+}
+
+.view-section.active {
+  display: block;
+}
+
+.modal-card-lg {
+  width: 580px;
+}
+
+.form-control-sm {
+  width: 140px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.form-control-textarea-lg {
+  min-height: 140px;
+}
+
+.full-events-ticker {
+  max-height: 450px;
+  min-height: 250px;
+}
+
+.empty-cell {
+  text-align: center;
+  color: var(--text-subtle);
+  padding: 24px;
+}
+
+.action-btn-sm {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.text-subtle-sm {
+  color: var(--text-subtle);
+  font-size: 11px;
+}
