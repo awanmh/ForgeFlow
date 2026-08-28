@@ -110,13 +110,15 @@ func (s *Service) Submit(ctx context.Context, cmd SubmitJobCommand) (*job.Job, b
 		if queueName == "" {
 			queueName = "default"
 		}
-		if _, enqueueErr := s.queueEngine.Enqueue(ctx, queueName, j.ID, j.Priority); enqueueErr != nil {
-			// Non-fatal: outbox reconciler / scheduler will publish the job if Redis is temporarily down
+		if s.queueEngine != nil {
+			if _, enqueueErr := s.queueEngine.Enqueue(ctx, queueName, j.ID, j.Priority); enqueueErr != nil {
+				// Non-fatal: outbox reconciler / scheduler will publish the job if Redis is temporarily down
+			}
 		}
 	}
 
 	// 6. Cache Response for Idempotency
-	if idemKey != "" {
+	if idemKey != "" && s.idempotencySvc != nil {
 		respBody, _ := json.Marshal(j)
 		resType := "job"
 		_ = s.idempotencySvc.SaveResponse(ctx, cmd.UserID, idemKey, 201, respBody, &j.ID, &resType)
