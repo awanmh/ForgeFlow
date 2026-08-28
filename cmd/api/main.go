@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/forgeflow/forgeflow/internal/application/idempotency"
+	appJob "github.com/forgeflow/forgeflow/internal/application/job"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/config"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/logging"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/postgres"
@@ -45,8 +47,20 @@ func main() {
 		logger.Warn("redis connection failed during startup (will retry on demand)", "error", err)
 	}
 
+	// Initialize Repositories and Services
+	jobRepo := postgres.NewJobRepo(pgClient)
+	attemptRepo := postgres.NewJobAttemptRepo(pgClient)
+	queueRepo := postgres.NewQueueRepo(pgClient)
+	idempotencyRepo := postgres.NewIdempotencyRepo(pgClient)
+	idempotencySvc := idempotency.NewService(idempotencyRepo)
+	queueEngine := redis.NewQueueEngine(rdbClient, "forgeflow-workers")
+	jobSvc := appJob.NewService(jobRepo, attemptRepo, queueEngine, idempotencySvc)
+	jobHandler := httpInterface.NewJobHandler(jobSvc, queueRepo)
+
 	// Initialize Router
-	router := httpInterface.NewRouter(pgClient, rdbClient, logger)
+	router := httpInterface.NewRouter(pgClient, rdbClient, logger, httpInterface.RouterOptions{
+		JobHandler: jobHandler,
+	})
 
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),

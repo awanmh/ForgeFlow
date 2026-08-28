@@ -17,14 +17,20 @@ import (
 
 // Server encapsulates the HTTP handler, Gin engine, and dependencies.
 type Server struct {
-	Engine   *gin.Engine
-	pgClient *postgres.Client
-	rdb      *redis.Client
-	logger   *slog.Logger
+	Engine     *gin.Engine
+	pgClient   *postgres.Client
+	rdb        *redis.Client
+	logger     *slog.Logger
+	jobHandler *JobHandler
+}
+
+// RouterOptions allows injecting domain handlers into the router.
+type RouterOptions struct {
+	JobHandler *JobHandler
 }
 
 // NewRouter constructs the configured HTTP router with standard middleware and core system endpoints.
-func NewRouter(pgClient *postgres.Client, rdb *redis.Client, logger *slog.Logger) *Server {
+func NewRouter(pgClient *postgres.Client, rdb *redis.Client, logger *slog.Logger, opts ...RouterOptions) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 
@@ -33,6 +39,10 @@ func NewRouter(pgClient *postgres.Client, rdb *redis.Client, logger *slog.Logger
 		pgClient: pgClient,
 		rdb:      rdb,
 		logger:   logger,
+	}
+
+	if len(opts) > 0 {
+		server.jobHandler = opts[0].JobHandler
 	}
 
 	// Global Middlewares
@@ -48,6 +58,16 @@ func NewRouter(pgClient *postgres.Client, rdb *redis.Client, logger *slog.Logger
 		v1.GET("/health", server.handleHealth)
 		v1.GET("/ready", server.handleReady)
 		v1.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+		if server.jobHandler != nil {
+			jobs := v1.Group("/jobs")
+			{
+				jobs.POST("", server.jobHandler.HandleSubmitJob)
+				jobs.GET("", server.jobHandler.HandleListJobs)
+				jobs.GET("/:id", server.jobHandler.HandleGetJob)
+				jobs.POST("/:id/cancel", server.jobHandler.HandleCancelJob)
+			}
+		}
 	}
 
 	return server
@@ -128,7 +148,7 @@ func (s *Server) corsMiddleware() gin.HandlerFunc {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Request-ID, Idempotency-Key")
-		c.Header("Access-Control-Expose-Headers", "X-Request-ID")
+		c.Header("Access-Control-Expose-Headers", "X-Request-ID, X-Idempotency-Replay")
 
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
