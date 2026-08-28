@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
+	appAuth "github.com/forgeflow/forgeflow/internal/application/auth"
 	"github.com/forgeflow/forgeflow/internal/application/idempotency"
 	appJob "github.com/forgeflow/forgeflow/internal/application/job"
 	appWorkflow "github.com/forgeflow/forgeflow/internal/application/workflow"
+	infraAuth "github.com/forgeflow/forgeflow/internal/infrastructure/auth"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/config"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/logging"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/postgres"
@@ -48,7 +51,12 @@ func main() {
 		logger.Warn("redis connection failed during startup (will retry on demand)", "error", err)
 	}
 
+	// Initialize Security and Rate Limiting
+	jwtManager := infraAuth.NewJWTManager(cfg.Auth.JWTSecret, cfg.Auth.AccessTokenTTL)
+	rateLimiter := httpInterface.NewRateLimiter(rdbClient, 100, 60*time.Second)
+
 	// Initialize Repositories and Services
+	userRepo := postgres.NewUserRepo(pgClient)
 	jobRepo := postgres.NewJobRepo(pgClient)
 	attemptRepo := postgres.NewJobAttemptRepo(pgClient)
 	queueRepo := postgres.NewQueueRepo(pgClient)
@@ -57,14 +65,19 @@ func main() {
 	idempotencySvc := idempotency.NewService(idempotencyRepo)
 	queueEngine := redis.NewQueueEngine(rdbClient, "forgeflow-workers")
 
+	authSvc := appAuth.NewService(userRepo, jwtManager)
 	jobSvc := appJob.NewService(jobRepo, attemptRepo, queueEngine, idempotencySvc)
 	wfSvc := appWorkflow.NewService(wfRepo, jobSvc, queueRepo, jobRepo)
 
+	authHandler := httpInterface.NewAuthHandler(authSvc)
 	jobHandler := httpInterface.NewJobHandler(jobSvc, queueRepo)
 	wfHandler := httpInterface.NewWorkflowHandler(wfSvc)
 
 	// Initialize Router
 	router := httpInterface.NewRouter(pgClient, rdbClient, logger, httpInterface.RouterOptions{
+		JWTManager:      jwtManager,
+		RateLimiter:     rateLimiter,
+		AuthHandler:     authHandler,
 		JobHandler:      jobHandler,
 		WorkflowHandler: wfHandler,
 	})

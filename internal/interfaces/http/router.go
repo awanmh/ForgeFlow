@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/forgeflow/forgeflow/internal/domain/user"
+	infraAuth "github.com/forgeflow/forgeflow/internal/infrastructure/auth"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/logging"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/postgres"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/redis"
@@ -21,12 +23,18 @@ type Server struct {
 	pgClient        *postgres.Client
 	rdb             *redis.Client
 	logger          *slog.Logger
+	jwtManager      *infraAuth.JWTManager
+	rateLimiter     *RateLimiter
+	authHandler     *AuthHandler
 	jobHandler      *JobHandler
 	workflowHandler *WorkflowHandler
 }
 
-// RouterOptions allows injecting domain handlers into the router.
+// RouterOptions allows injecting domain handlers and security managers into the router.
 type RouterOptions struct {
+	JWTManager      *infraAuth.JWTManager
+	RateLimiter     *RateLimiter
+	AuthHandler     *AuthHandler
 	JobHandler      *JobHandler
 	WorkflowHandler *WorkflowHandler
 }
@@ -44,8 +52,15 @@ func NewRouter(pgClient *postgres.Client, rdb *redis.Client, logger *slog.Logger
 	}
 
 	if len(opts) > 0 {
+		server.jwtManager = opts[0].JWTManager
+		server.rateLimiter = opts[0].RateLimiter
+		server.authHandler = opts[0].AuthHandler
 		server.jobHandler = opts[0].JobHandler
 		server.workflowHandler = opts[0].WorkflowHandler
+	}
+
+	if server.jwtManager == nil {
+		server.jwtManager = infraAuth.NewJWTManager("", 24*time.Hour)
 	}
 
 	// Global Middlewares
@@ -55,31 +70,50 @@ func NewRouter(pgClient *postgres.Client, rdb *redis.Client, logger *slog.Logger
 	engine.Use(server.securityHeadersMiddleware())
 	engine.Use(server.corsMiddleware())
 
+	if server.rateLimiter != nil {
+		engine.Use(server.rateLimiter.Middleware())
+	}
+
 	// Core API v1 routes
 	v1 := engine.Group("/api/v1")
 	{
+		// System Probes & Metrics (Public)
 		v1.GET("/health", server.handleHealth)
 		v1.GET("/ready", server.handleReady)
 		v1.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
+		// Authentication (Public)
+		if server.authHandler != nil {
+			authGroup := v1.Group("/auth")
+			{
+				authGroup.POST("/register", server.authHandler.HandleRegister)
+				authGroup.POST("/login", server.authHandler.HandleLogin)
+				authGroup.GET("/me", AuthMiddleware(server.jwtManager), server.authHandler.HandleMe)
+			}
+		}
+
+		// Job Endpoints (Optional / Authenticated)
 		if server.jobHandler != nil {
 			jobs := v1.Group("/jobs")
+			jobs.Use(OptionalAuthMiddleware(server.jwtManager))
 			{
 				jobs.POST("", server.jobHandler.HandleSubmitJob)
 				jobs.GET("", server.jobHandler.HandleListJobs)
 				jobs.GET("/:id", server.jobHandler.HandleGetJob)
-				jobs.POST("/:id/cancel", server.jobHandler.HandleCancelJob)
+				jobs.POST("/:id/cancel", RequireRoles(user.RoleAdmin, user.RoleOperator), server.jobHandler.HandleCancelJob)
 			}
 		}
 
+		// Workflow Endpoints (Optional / Authenticated)
 		if server.workflowHandler != nil {
 			workflows := v1.Group("/workflows")
+			workflows.Use(OptionalAuthMiddleware(server.jwtManager))
 			{
 				workflows.POST("", server.workflowHandler.HandleCreateWorkflow)
 				workflows.GET("", server.workflowHandler.HandleListWorkflows)
 				workflows.GET("/:id", server.workflowHandler.HandleGetWorkflow)
-				workflows.POST("/:id/start", server.workflowHandler.HandleStartWorkflow)
-				workflows.POST("/:id/cancel", server.workflowHandler.HandleCancelWorkflow)
+				workflows.POST("/:id/start", RequireRoles(user.RoleAdmin, user.RoleOperator), server.workflowHandler.HandleStartWorkflow)
+				workflows.POST("/:id/cancel", RequireRoles(user.RoleAdmin, user.RoleOperator), server.workflowHandler.HandleCancelWorkflow)
 			}
 		}
 	}
@@ -162,7 +196,7 @@ func (s *Server) corsMiddleware() gin.HandlerFunc {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Request-ID, Idempotency-Key")
-		c.Header("Access-Control-Expose-Headers", "X-Request-ID, X-Idempotency-Replay")
+		c.Header("Access-Control-Expose-Headers", "X-Request-ID, X-Idempotency-Replay, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset")
 
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
