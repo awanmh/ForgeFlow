@@ -28,6 +28,7 @@ type Server struct {
 	authHandler     *AuthHandler
 	jobHandler      *JobHandler
 	workflowHandler *WorkflowHandler
+	sseHandler      *SSEHandler
 }
 
 // RouterOptions allows injecting domain handlers and security managers into the router.
@@ -37,6 +38,7 @@ type RouterOptions struct {
 	AuthHandler     *AuthHandler
 	JobHandler      *JobHandler
 	WorkflowHandler *WorkflowHandler
+	SSEHandler      *SSEHandler
 }
 
 // NewRouter constructs the configured HTTP router with standard middleware and core system endpoints.
@@ -57,14 +59,19 @@ func NewRouter(pgClient *postgres.Client, rdb *redis.Client, logger *slog.Logger
 		server.authHandler = opts[0].AuthHandler
 		server.jobHandler = opts[0].JobHandler
 		server.workflowHandler = opts[0].WorkflowHandler
+		server.sseHandler = opts[0].SSEHandler
 	}
 
 	if server.jwtManager == nil {
 		server.jwtManager = infraAuth.NewJWTManager("", 24*time.Hour)
 	}
+	if server.sseHandler == nil {
+		server.sseHandler = NewSSEHandler(rdb)
+	}
 
 	// Global Middlewares
 	engine.Use(server.requestIDMiddleware())
+	engine.Use(PrometheusMetricsMiddleware())
 	engine.Use(server.structuredLoggerMiddleware())
 	engine.Use(server.recoveryMiddleware())
 	engine.Use(server.securityHeadersMiddleware())
@@ -81,6 +88,11 @@ func NewRouter(pgClient *postgres.Client, rdb *redis.Client, logger *slog.Logger
 		v1.GET("/health", server.handleHealth)
 		v1.GET("/ready", server.handleReady)
 		v1.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+		// Real-time Event Streaming (SSE)
+		if server.sseHandler != nil {
+			v1.GET("/events/stream", server.sseHandler.HandleStream)
+		}
 
 		// Authentication (Public)
 		if server.authHandler != nil {
