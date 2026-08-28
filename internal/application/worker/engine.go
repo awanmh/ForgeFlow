@@ -155,35 +155,14 @@ func (e *Engine) processJob(ctx context.Context, msg infraRedis.QueueMessage) {
 		"worker_id", e.cfg.WorkerID,
 	)
 
-	// Step 1: Claim job in PostgreSQL
-	j, err := e.jobRepo.GetByID(ctx, msg.JobID)
+	// Step 1: Claim job atomically in PostgreSQL
+	j, att, err := e.jobRepo.ClaimByID(ctx, msg.JobID, e.cfg.WorkerID, e.cfg.LeaseDuration)
 	if err != nil {
-		jobLogger.Warn("job not found in PostgreSQL during processing", "error", err)
+		jobLogger.Warn("job not claimable or already processed in PostgreSQL", "error", err)
 		_ = e.queue.Ack(ctx, e.cfg.QueueName, msg.ID)
 		return
 	}
-
-	if j.IsTerminal() {
-		jobLogger.Info("job is already in terminal state, skipping execution", "status", j.Status)
-		_ = e.queue.Ack(ctx, e.cfg.QueueName, msg.ID)
-		return
-	}
-
-	// Claim lease
-	now := time.Now().UTC()
-	att, err := j.Claim(e.cfg.WorkerID, e.cfg.LeaseDuration, now)
-	if err != nil {
-		jobLogger.Warn("failed to claim job in domain state machine", "error", err)
-		_ = e.queue.Ack(ctx, e.cfg.QueueName, msg.ID)
-		return
-	}
-
-	// Record attempt in database
-	if e.attemptRepo != nil {
-		if err := e.attemptRepo.Create(ctx, att); err != nil {
-			jobLogger.Warn("failed to persist initial job attempt", "error", err)
-		}
-	}
+	_ = att
 
 	// Step 2: Start background heartbeat renewal
 	jobCtx, cancelJob := context.WithCancel(ctx)

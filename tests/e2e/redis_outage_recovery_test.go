@@ -63,6 +63,9 @@ func (m *outboxMockRepo) List(ctx context.Context, filter ports.JobFilter) ([]*d
 func (m *outboxMockRepo) ClaimNext(ctx context.Context, queueID uuid.UUID, workerID uuid.UUID, leaseDuration time.Duration) (*domainJob.Job, *domainJob.JobAttempt, error) {
 	return nil, nil, nil
 }
+func (m *outboxMockRepo) ClaimByID(ctx context.Context, jobID uuid.UUID, workerID uuid.UUID, leaseDuration time.Duration) (*domainJob.Job, *domainJob.JobAttempt, error) {
+	return nil, nil, nil
+}
 func (m *outboxMockRepo) RenewLease(ctx context.Context, jobID uuid.UUID, workerID uuid.UUID, leaseDuration time.Duration) error {
 	return nil
 }

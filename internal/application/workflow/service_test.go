@@ -100,6 +100,9 @@ func (m *mockJobRepo) List(ctx context.Context, filter ports.JobFilter) ([]*doma
 func (m *mockJobRepo) ClaimNext(ctx context.Context, queueID uuid.UUID, workerID uuid.UUID, leaseDuration time.Duration) (*domainJob.Job, *domainJob.JobAttempt, error) {
 	return nil, nil, nil
 }
+func (m *mockJobRepo) ClaimByID(ctx context.Context, jobID uuid.UUID, workerID uuid.UUID, leaseDuration time.Duration) (*domainJob.Job, *domainJob.JobAttempt, error) {
+	return nil, nil, nil
+}
 func (m *mockJobRepo) RenewLease(ctx context.Context, jobID uuid.UUID, workerID uuid.UUID, leaseDuration time.Duration) error {
 	return nil
 }

@@ -21,6 +21,15 @@ func NewWorkerRepo(client *Client) *WorkerRepo {
 }
 
 func (r *WorkerRepo) Register(ctx context.Context, w *worker.Worker) error {
+	capabilities := w.Capabilities
+	if len(capabilities) == 0 {
+		capabilities = []byte("[]")
+	}
+	metadata := w.Metadata
+	if len(metadata) == 0 {
+		metadata = []byte("{}")
+	}
+
 	query := `
 		INSERT INTO workers (
 			id, worker_key, hostname, version, status, concurrency,
@@ -30,6 +39,7 @@ func (r *WorkerRepo) Register(ctx context.Context, w *worker.Worker) error {
 			$7, $8, $9, $10, $11
 		)
 		ON CONFLICT (worker_key) DO UPDATE SET
+			id = EXCLUDED.id,
 			hostname = EXCLUDED.hostname,
 			version = EXCLUDED.version,
 			status = EXCLUDED.status,
@@ -41,7 +51,7 @@ func (r *WorkerRepo) Register(ctx context.Context, w *worker.Worker) error {
 	`
 	_, err := r.client.Pool.Exec(ctx, query,
 		w.ID, w.WorkerKey, w.Hostname, w.Version, string(w.Status), w.Concurrency,
-		w.RegisteredAt, w.LastHeartbeatAt, w.StartedAt, w.Capabilities, w.Metadata,
+		w.RegisteredAt, w.LastHeartbeatAt, w.StartedAt, capabilities, metadata,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to register worker: %w", err)

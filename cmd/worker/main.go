@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/forgeflow/forgeflow/internal/application/task"
 	"github.com/forgeflow/forgeflow/internal/application/worker"
+	domainWorker "github.com/forgeflow/forgeflow/internal/domain/worker"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/config"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/logging"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/postgres"
@@ -51,10 +53,30 @@ func main() {
 
 	jobRepo := postgres.NewJobRepo(pgClient)
 	attemptRepo := postgres.NewJobAttemptRepo(pgClient)
+	workerRepo := postgres.NewWorkerRepo(pgClient)
 	queueEngine := redis.NewQueueEngine(rdbClient, "forgeflow-workers")
 	taskRegistry := task.NewRegistry()
 
 	workerUUID := uuid.New()
+	hostname, _ := os.Hostname()
+	now := time.Now().UTC()
+
+	// Register worker entity in PostgreSQL to satisfy foreign key constraints
+	workerEntity := &domainWorker.Worker{
+		ID:              workerUUID,
+		WorkerKey:       cfg.Worker.WorkerID,
+		Hostname:        hostname,
+		Version:         "1.0.0",
+		Status:          domainWorker.StatusActive,
+		Concurrency:     cfg.Worker.Concurrency,
+		RegisteredAt:    now,
+		StartedAt:       &now,
+		LastHeartbeatAt: &now,
+	}
+	if regErr := workerRepo.Register(ctx, workerEntity); regErr != nil {
+		logger.Warn("failed to register worker in postgres during startup", "error", regErr)
+	}
+
 	workerEngine := worker.NewEngine(worker.Config{
 		WorkerID:          workerUUID,
 		WorkerName:        cfg.Worker.WorkerID,
@@ -83,31 +105,26 @@ func main() {
 	shutdownMgr := shutdown.NewManager(logger, cfg.Worker.LeaseDuration)
 
 	shutdownMgr.Register("WorkerPool", func(ctx context.Context) error {
-		logger.Info("stopping worker consumer loop and draining active tasks")
 		cancelWorker()
 		workerEngine.Stop()
-		return workerEngine.Drain(ctx)
-	})
-
-	shutdownMgr.Register("Redis", func(ctx context.Context) error {
-		if rdbClient != nil {
-			return rdbClient.Close()
-		}
+		_ = workerRepo.UpdateStatus(ctx, workerUUID, domainWorker.StatusStopped)
 		return nil
 	})
 
-	shutdownMgr.Register("PostgreSQL", func(ctx context.Context) error {
-		if pgClient != nil {
-			pgClient.Close()
-		}
+	shutdownMgr.Register("RedisClient", func(ctx context.Context) error {
+		return rdbClient.Close()
+	})
+
+	shutdownMgr.Register("PostgresPool", func(ctx context.Context) error {
+		pgClient.Close()
 		return nil
 	})
 
-	// Wait for termination signal
+	// Block awaiting SIGINT / SIGTERM
 	if err := shutdownMgr.Listen(ctx); err != nil {
-		logger.Error("worker graceful shutdown failed", "error", err)
+		logger.Error("shutdown completed with errors", "error", err)
 		os.Exit(1)
 	}
 
-	logger.Info("forgeflow-worker stopped cleanly")
+	logger.Info("forgeflow-worker shutdown gracefully")
 }

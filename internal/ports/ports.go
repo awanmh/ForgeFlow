@@ -68,6 +68,7 @@ type JobRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*job.Job, error)
 	List(ctx context.Context, filter JobFilter) ([]*job.Job, int64, error)
 	ClaimNext(ctx context.Context, queueID uuid.UUID, workerID uuid.UUID, leaseDuration time.Duration) (*job.Job, *job.JobAttempt, error)
+	ClaimByID(ctx context.Context, jobID uuid.UUID, workerID uuid.UUID, leaseDuration time.Duration) (*job.Job, *job.JobAttempt, error)
 	RenewLease(ctx context.Context, jobID uuid.UUID, workerID uuid.UUID, leaseDuration time.Duration) error
 	Complete(ctx context.Context, jobID uuid.UUID, workerID uuid.UUID) error
 	Fail(ctx context.Context, jobID uuid.UUID, workerID uuid.UUID, errCode, errMsg string, retryable bool, retryDelay time.Duration) error

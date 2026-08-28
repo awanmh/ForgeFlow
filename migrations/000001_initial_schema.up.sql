@@ -18,6 +18,12 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 
+-- Seed baseline system and admin user
+INSERT INTO users (id, email, password_hash, name, status) VALUES
+    ('00000000-0000-0000-0000-000000000001', 'system@forgeflow.internal', '$2a$12$e8p1tI7zZfVqG8aP8tP1E.1y4aB2Z.5K6L7M8N9O0P1Q2R3S4T5U', 'ForgeFlow System', 'ACTIVE'),
+    ('00000000-0000-0000-0000-000000000002', 'admin@forgeflow.internal', '$2a$12$e8p1tI7zZfVqG8aP8tP1E.1y4aB2Z.5K6L7M8N9O0P1Q2R3S4T5U', 'System Admin', 'ACTIVE')
+ON CONFLICT (email) DO NOTHING;
+
 -- 2. Roles table
 CREATE TABLE IF NOT EXISTS roles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

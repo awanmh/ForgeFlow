@@ -11,7 +11,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d:ro
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U forgeflow -d forgeflow"]
       interval: 5s
@@ -28,7 +28,7 @@ services:
     volumes:
       - redis-data:/data
     ports:
-      - "6379:6379"
+      - "6380:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -52,7 +52,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET: forgeflow-portfolio-secure-jwt-secret-key-2026
     ports:
-      - "8080:8080"
+      - "8000:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,6 +75,7 @@ services:
       WORKER_CONCURRENCY: 10
       DATABASE_URL: postgres://forgeflow:forgeflow_secret@postgres:5432/forgeflow?sslmode=disable
       REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: forgeflow-portfolio-secure-jwt-secret-key-2026
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,6 +96,7 @@ services:
       LOG_LEVEL: info
       DATABASE_URL: postgres://forgeflow:forgeflow_secret@postgres:5432/forgeflow?sslmode=disable
       REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: forgeflow-portfolio-secure-jwt-secret-key-2026
     depends_on:
       postgres:
         condition: service_healthy
@@ -121,7 +123,7 @@ services:
     container_name: forgeflow-prometheus
     restart: unless-stopped
     ports:
-      - "9090:9090"
+      - "9091:9090"
     volumes:
       - ./deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     networks:
@@ -132,7 +134,7 @@ services:
     container_name: forgeflow-grafana
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false

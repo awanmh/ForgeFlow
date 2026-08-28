@@ -266,6 +266,86 @@ func (r *JobRepo) ClaimNext(ctx context.Context, queueID, workerID uuid.UUID, le
 	return claimedJob, attempt, nil
 }
 
+// ClaimByID atomically claims a specific job by ID for the given worker in PostgreSQL.
+func (r *JobRepo) ClaimByID(ctx context.Context, jobID, workerID uuid.UUID, leaseDuration time.Duration) (*job.Job, *job.JobAttempt, error) {
+	var claimedJob *job.Job
+	var attempt *job.JobAttempt
+
+	err := r.client.WithinTransaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		selectQuery := `
+			SELECT
+				id, user_id, workflow_id, workflow_node_id, queue_id, worker_id,
+				task_type, payload, priority, status, attempt_count, max_attempts,
+				scheduled_at, timeout_seconds, lease_expires_at, created_at, updated_at,
+				started_at, completed_at, cancelled_at, error_code, error_message, idempotency_key
+			FROM jobs
+			WHERE id = $1
+			  AND status IN ('QUEUED', 'RETRYING', 'PENDING')
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		`
+		row := tx.QueryRow(ctx, selectQuery, jobID)
+		j, err := scanJob(row)
+		if err != nil {
+			if errors.Is(err, job.ErrJobNotFound) {
+				return job.ErrJobNotFound
+			}
+			return fmt.Errorf("failed to select job for claim: %w", err)
+		}
+
+		now := time.Now().UTC()
+		att, err := j.Claim(workerID, leaseDuration, now)
+		if err != nil {
+			return err
+		}
+
+		updateQuery := `
+			UPDATE jobs
+			SET
+				status = $1,
+				worker_id = $2,
+				attempt_count = $3,
+				lease_expires_at = $4,
+				started_at = COALESCE(started_at, $5),
+				updated_at = $6
+			WHERE id = $7
+		`
+		_, err = tx.Exec(ctx, updateQuery,
+			string(j.Status), j.WorkerID, j.AttemptCount, j.LeaseExpiresAt, j.StartedAt, j.UpdatedAt, j.ID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update claimed job: %w", err)
+		}
+
+		attemptQuery := `
+			INSERT INTO job_attempts (
+				id, job_id, attempt_number, worker_id,
+				status, started_at, lease_expires_at, metadata
+			) VALUES (
+				$1, $2, $3, $4,
+				$5, $6, $7, $8
+			)
+		`
+		_, err = tx.Exec(ctx, attemptQuery,
+			att.ID, att.JobID, att.AttemptNumber, att.WorkerID,
+			string(att.Status), att.StartedAt, att.LeaseExpiresAt, att.Metadata,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to record job attempt: %w", err)
+		}
+
+		claimedJob = j
+		attempt = att
+		return nil
+	})
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return claimedJob, attempt, nil
+}
+
 // RenewLease extends the lease duration for an active worker.
 func (r *JobRepo) RenewLease(ctx context.Context, jobID, workerID uuid.UUID, leaseDuration time.Duration) error {
 	now := time.Now().UTC()
