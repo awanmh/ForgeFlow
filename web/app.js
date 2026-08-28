@@ -36,8 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!jobs || jobs.length === 0) {
       jobsTableBody.innerHTML = `
         <tr>
-          <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 32px;">
-            No jobs found. Click <strong>+ Submit Job</strong> or <strong>⚡ Quick Task Demo</strong> to run a task.
+          <td colspan="7" style="text-align: center; color: var(--text-subtle); padding: 24px;">
+            No active jobs in queue. Submit a task to begin processing.
           </td>
         </tr>
       `;
@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     jobsTableBody.innerHTML = jobs.map(j => {
       const statusClass = `badge-${(j.status || 'pending').toLowerCase()}`;
-      const shortID = j.id ? j.id.substring(0, 8) + '...' : 'N/A';
+      const shortID = j.id ? j.id.substring(0, 8) : 'N/A';
       const created = new Date(j.created_at).toLocaleTimeString();
 
       return `
@@ -59,8 +59,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <td>${created}</td>
           <td>
             ${j.status !== 'SUCCEEDED' && j.status !== 'DEAD' && j.status !== 'CANCELLED' ? 
-              `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="cancelJob('${j.id}')">Cancel</button>` : 
-              `<span style="color: var(--text-muted); font-size: 11px;">Completed</span>`
+              `<button type="button" class="btn btn-secondary" style="padding: 2px 6px; font-size: 11px;" onclick="cancelJob('${j.id}')">Cancel</button>` : 
+              `<span style="color: var(--text-subtle); font-size: 11px;">Done</span>`
             }
           </td>
         </tr>
@@ -93,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       payload = JSON.parse(document.getElementById('jobPayload').value);
     } catch {
-      payload = { error: "invalid json provided" };
+      payload = { error: "invalid json" };
     }
 
     const headers = { 'Content-Type': 'application/json' };
@@ -116,12 +116,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (resp.ok) {
         jobModal.classList.remove('open');
         fetchJobs();
-      } else {
-        const err = await resp.json();
-        alert(`Error: ${err.error?.message || 'Failed to submit job'}`);
       }
     } catch (err) {
-      alert(`Network error: ${err.message}`);
+      console.error('Job submission failed:', err);
     }
   });
 
@@ -129,8 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
   btnQuickDemo.addEventListener('click', async () => {
     const demoPayloads = [
       { task_type: "custom-demo", priority: 20, payload: { action: "success", sleep_millis: 100 } },
-      { task_type: "notification", priority: 15, payload: { channel: "slack", target: "#alerts", message: "Deployment complete" } },
-      { task_type: "database-backup", priority: 5, payload: { database: "production_pg", target_s3: "s3://backups/pg" } }
+      { task_type: "notification", priority: 15, payload: { channel: "webhook", target: "https://api.internal/hooks", message: "Job processed" } },
+      { task_type: "database-backup", priority: 5, payload: { database: "core_db", target_s3: "s3://backups/core" } }
     ];
 
     const pick = demoPayloads[Math.floor(Math.random() * demoPayloads.length)];
@@ -147,7 +144,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Window helper for cancelling
   window.cancelJob = async (id) => {
-    if (!confirm('Cancel this job?')) return;
     await fetch(`/api/v1/jobs/${id}/cancel`, { method: 'POST' });
     fetchJobs();
   };
@@ -157,8 +153,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const eventSource = new EventSource('/api/v1/events/stream');
 
     eventSource.onopen = () => {
-      document.getElementById('streamStatusText').textContent = 'Connected (SSE)';
-      document.getElementById('streamStatusDot').style.background = 'var(--accent-emerald)';
+      document.getElementById('streamStatusText').textContent = 'Connected';
+      document.getElementById('streamStatusDot').style.background = 'var(--status-success)';
     };
 
     eventSource.onmessage = (event) => {
@@ -168,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     eventSource.onerror = () => {
       document.getElementById('streamStatusText').textContent = 'Reconnecting...';
-      document.getElementById('streamStatusDot').style.background = 'var(--accent-amber)';
+      document.getElementById('streamStatusDot').style.background = 'var(--status-warning)';
     };
   }
 
@@ -178,7 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
     row.className = 'event-row';
     row.innerHTML = `
       <span class="event-time">${timeStr}</span>
-      <span class="event-tag">[EVENT]</span>
+      <span class="event-tag">EVENT</span>
       <span>${escapeHTML(data)}</span>
     `;
 

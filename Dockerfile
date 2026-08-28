@@ -29,6 +29,7 @@ WORKDIR /app
 # Target for API
 FROM base AS api
 COPY --from=builder /bin/forgeflow-api /app/forgeflow-api
+COPY --from=builder /app/web /app/web
 EXPOSE 8080 9090
 ENTRYPOINT ["/app/forgeflow-api"]
 

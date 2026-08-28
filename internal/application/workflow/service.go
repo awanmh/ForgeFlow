@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,10 +40,11 @@ type CreateWorkflowCommand struct {
 
 // Service coordinates DAG validation, persistence, node materialization, and workflow execution.
 type Service struct {
-	wfRepo     ports.WorkflowRepository
-	jobSvc     *appJob.Service
-	queueRepo  ports.QueueRepository
-	jobRepo    ports.JobRepository
+	mu        sync.Mutex
+	wfRepo    ports.WorkflowRepository
+	jobSvc    *appJob.Service
+	queueRepo ports.QueueRepository
+	jobRepo   ports.JobRepository
 }
 
 // NewService constructs a new Workflow application service.
@@ -146,6 +148,9 @@ func (s *Service) Create(ctx context.Context, cmd CreateWorkflowCommand) (*workf
 
 // Start initiates workflow execution by materializing and enqueuing root nodes.
 func (s *Service) Start(ctx context.Context, workflowID uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	wf, nodes, edges, err := s.wfRepo.GetByID(ctx, workflowID)
 	if err != nil {
 		return err
@@ -177,6 +182,9 @@ func (s *Service) Start(ctx context.Context, workflowID uuid.UUID) error {
 
 // HandleJobUpdate is called when a job belonging to a workflow finishes execution.
 func (s *Service) HandleJobUpdate(ctx context.Context, workflowID, workflowNodeID uuid.UUID, succeeded bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	wf, nodes, edges, err := s.wfRepo.GetByID(ctx, workflowID)
 	if err != nil {
 		return err
@@ -205,7 +213,7 @@ func (s *Service) HandleJobUpdate(ctx context.Context, workflowID, workflowNodeI
 
 	// Materialize any downstream nodes whose dependency conditions are now met
 	for _, n := range nodes {
-		if dag.IsNodeRunnable(n.ID) {
+		if n.Status == workflow.NodePending && dag.IsNodeRunnable(n.ID) {
 			_ = s.materializeNode(ctx, n)
 		}
 	}
@@ -223,6 +231,10 @@ func (s *Service) HandleJobUpdate(ctx context.Context, workflowID, workflowNodeI
 }
 
 func (s *Service) materializeNode(ctx context.Context, node *workflow.Node) error {
+	if node.Status != workflow.NodePending {
+		return nil
+	}
+
 	defaultQueueID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
 
 	cmd := appJob.SubmitJobCommand{
@@ -242,6 +254,8 @@ func (s *Service) materializeNode(ctx context.Context, node *workflow.Node) erro
 		return err
 	}
 
+	node.Status = workflow.NodeQueued
+	node.JobID = &j.ID
 	return s.wfRepo.UpdateNodeStatus(ctx, node.ID, workflow.NodeQueued, &j.ID)
 }
 
@@ -256,3 +270,5 @@ func (s *Service) List(ctx context.Context, filter ports.WorkflowFilter) ([]*wor
 func (s *Service) Cancel(ctx context.Context, id uuid.UUID) error {
 	return s.wfRepo.UpdateStatus(ctx, id, workflow.StatusCancelled)
 }
+
+type domainJobFilter = workflow.Workflow

@@ -3,7 +3,6 @@ package job
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -58,22 +57,32 @@ func (s *Service) Submit(ctx context.Context, cmd SubmitJobCommand) (*job.Job, b
 
 	// 1. Idempotency Check & Atomic Key Acquisition
 	var idemKey string
-	if cmd.IdempotencyKey != nil && *cmd.IdempotencyKey != "" {
+	if cmd.IdempotencyKey != nil && *cmd.IdempotencyKey != "" && s.idempotencySvc != nil {
 		idemKey = *cmd.IdempotencyKey
 		rec, isNew, err := s.idempotencySvc.CheckOrLock(ctx, cmd.UserID, idemKey, payloadBytes, 24*time.Hour)
 		if err != nil {
 			return nil, false, nil, err
 		}
 
-		// Duplicate request: return cached response if present
-		if !isNew && rec != nil && rec.ResponseStatus != nil {
-			if rec.ResourceID != nil {
-				existingJob, getErr := s.jobRepo.GetByID(ctx, *rec.ResourceID)
-				if getErr == nil {
-					return existingJob, true, rec.ResponseBody, nil
+		// Concurrent duplicate request: if another request holds the lock, await completion
+		if !isNew {
+			for retries := 0; retries < 40 && (rec == nil || rec.ResponseStatus == nil); retries++ {
+				time.Sleep(20 * time.Millisecond)
+				rec, isNew, _ = s.idempotencySvc.CheckOrLock(ctx, cmd.UserID, idemKey, payloadBytes, 24*time.Hour)
+				if isNew {
+					break
 				}
 			}
-			return nil, true, rec.ResponseBody, nil
+
+			if rec != nil {
+				if rec.ResourceID != nil {
+					existingJob, getErr := s.jobRepo.GetByID(ctx, *rec.ResourceID)
+					if getErr == nil {
+						return existingJob, true, rec.ResponseBody, nil
+					}
+				}
+				return nil, true, rec.ResponseBody, nil
+			}
 		}
 	}
 
@@ -88,12 +97,11 @@ func (s *Service) Submit(ctx context.Context, cmd SubmitJobCommand) (*job.Job, b
 
 	// 3. Create Outbox Event
 	outboxEvt, err := outbox.NewEvent("job.created", "job", j.ID, map[string]any{
-		"job_id":      j.ID,
-		"queue_id":    j.QueueID,
-		"queue_name":  cmd.QueueName,
-		"priority":    j.Priority,
-		"task_type":   j.TaskType,
-		"scheduled_at": j.ScheduledAt,
+		"job_id":     j.ID,
+		"queue_id":   j.QueueID,
+		"task_type":  j.TaskType,
+		"priority":   j.Priority,
+		"queue_name": cmd.QueueName,
 	})
 	if err != nil {
 		return nil, false, nil, fmt.Errorf("failed to create outbox event: %w", err)
@@ -136,26 +144,27 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*job.Job, []*job.J
 
 	attempts, err := s.attemptRepo.ListByJobID(ctx, id)
 	if err != nil {
-		return j, nil, nil // return job even if attempts query fails
+		// Attempt listing error is non-fatal for primary job payload
+		attempts = []*job.JobAttempt{}
 	}
 
 	return j, attempts, nil
 }
 
-// List returns filtered and paginated jobs.
+// List queries jobs matching the provided filter criteria.
 func (s *Service) List(ctx context.Context, filter ports.JobFilter) ([]*job.Job, int64, error) {
 	return s.jobRepo.List(ctx, filter)
 }
 
-// Cancel terminates a non-terminal job.
+// Cancel transitions a non-terminal job to CANCELLED status.
 func (s *Service) Cancel(ctx context.Context, id uuid.UUID) error {
 	j, err := s.jobRepo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	if j.IsTerminal() {
-		return errors.New("cannot cancel job already in terminal state")
+	if err := j.Cancel(time.Now().UTC()); err != nil {
+		return err
 	}
 
 	return s.jobRepo.Cancel(ctx, id)
