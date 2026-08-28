@@ -11,6 +11,7 @@ import (
 	"github.com/forgeflow/forgeflow/internal/domain/queue"
 	"github.com/forgeflow/forgeflow/internal/domain/user"
 	"github.com/forgeflow/forgeflow/internal/domain/worker"
+	"github.com/forgeflow/forgeflow/internal/domain/workflow"
 )
 
 // Clock defines a deterministic time abstraction for testing.
@@ -116,6 +117,23 @@ type OutboxRepository interface {
 	FetchPending(ctx context.Context, limit int) ([]*outbox.Event, error)
 	MarkPublished(ctx context.Context, id uuid.UUID) error
 	MarkFailed(ctx context.Context, id uuid.UUID) error
+}
+
+// WorkflowFilter represents criteria for filtering workflows.
+type WorkflowFilter struct {
+	UserID *uuid.UUID
+	Status *workflow.Status
+	Limit  int
+	Offset int
+}
+
+// WorkflowRepository defines persistence contract for workflow DAGs.
+type WorkflowRepository interface {
+	Create(ctx context.Context, wf *workflow.Workflow, nodes []*workflow.Node, edges []*workflow.Edge) error
+	GetByID(ctx context.Context, id uuid.UUID) (*workflow.Workflow, []*workflow.Node, []*workflow.Edge, error)
+	List(ctx context.Context, filter WorkflowFilter) ([]*workflow.Workflow, int64, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status workflow.Status) error
+	UpdateNodeStatus(ctx context.Context, nodeID uuid.UUID, status workflow.NodeStatus, jobID *uuid.UUID) error
 }
 
 // IdempotencyRecord stores idempotency payload cache.

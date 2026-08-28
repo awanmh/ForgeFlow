@@ -17,16 +17,18 @@ import (
 
 // Server encapsulates the HTTP handler, Gin engine, and dependencies.
 type Server struct {
-	Engine     *gin.Engine
-	pgClient   *postgres.Client
-	rdb        *redis.Client
-	logger     *slog.Logger
-	jobHandler *JobHandler
+	Engine          *gin.Engine
+	pgClient        *postgres.Client
+	rdb             *redis.Client
+	logger          *slog.Logger
+	jobHandler      *JobHandler
+	workflowHandler *WorkflowHandler
 }
 
 // RouterOptions allows injecting domain handlers into the router.
 type RouterOptions struct {
-	JobHandler *JobHandler
+	JobHandler      *JobHandler
+	WorkflowHandler *WorkflowHandler
 }
 
 // NewRouter constructs the configured HTTP router with standard middleware and core system endpoints.
@@ -43,6 +45,7 @@ func NewRouter(pgClient *postgres.Client, rdb *redis.Client, logger *slog.Logger
 
 	if len(opts) > 0 {
 		server.jobHandler = opts[0].JobHandler
+		server.workflowHandler = opts[0].WorkflowHandler
 	}
 
 	// Global Middlewares
@@ -66,6 +69,17 @@ func NewRouter(pgClient *postgres.Client, rdb *redis.Client, logger *slog.Logger
 				jobs.GET("", server.jobHandler.HandleListJobs)
 				jobs.GET("/:id", server.jobHandler.HandleGetJob)
 				jobs.POST("/:id/cancel", server.jobHandler.HandleCancelJob)
+			}
+		}
+
+		if server.workflowHandler != nil {
+			workflows := v1.Group("/workflows")
+			{
+				workflows.POST("", server.workflowHandler.HandleCreateWorkflow)
+				workflows.GET("", server.workflowHandler.HandleListWorkflows)
+				workflows.GET("/:id", server.workflowHandler.HandleGetWorkflow)
+				workflows.POST("/:id/start", server.workflowHandler.HandleStartWorkflow)
+				workflows.POST("/:id/cancel", server.workflowHandler.HandleCancelWorkflow)
 			}
 		}
 	}

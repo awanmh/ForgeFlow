@@ -9,6 +9,7 @@ import (
 
 	"github.com/forgeflow/forgeflow/internal/application/idempotency"
 	appJob "github.com/forgeflow/forgeflow/internal/application/job"
+	appWorkflow "github.com/forgeflow/forgeflow/internal/application/workflow"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/config"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/logging"
 	"github.com/forgeflow/forgeflow/internal/infrastructure/postgres"
@@ -51,15 +52,21 @@ func main() {
 	jobRepo := postgres.NewJobRepo(pgClient)
 	attemptRepo := postgres.NewJobAttemptRepo(pgClient)
 	queueRepo := postgres.NewQueueRepo(pgClient)
+	wfRepo := postgres.NewWorkflowRepo(pgClient)
 	idempotencyRepo := postgres.NewIdempotencyRepo(pgClient)
 	idempotencySvc := idempotency.NewService(idempotencyRepo)
 	queueEngine := redis.NewQueueEngine(rdbClient, "forgeflow-workers")
+
 	jobSvc := appJob.NewService(jobRepo, attemptRepo, queueEngine, idempotencySvc)
+	wfSvc := appWorkflow.NewService(wfRepo, jobSvc, queueRepo, jobRepo)
+
 	jobHandler := httpInterface.NewJobHandler(jobSvc, queueRepo)
+	wfHandler := httpInterface.NewWorkflowHandler(wfSvc)
 
 	// Initialize Router
 	router := httpInterface.NewRouter(pgClient, rdbClient, logger, httpInterface.RouterOptions{
-		JobHandler: jobHandler,
+		JobHandler:      jobHandler,
+		WorkflowHandler: wfHandler,
 	})
 
 	httpServer := &http.Server{
